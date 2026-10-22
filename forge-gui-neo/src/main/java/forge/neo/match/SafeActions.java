@@ -9,6 +9,8 @@ import java.util.function.Supplier;
 import forge.LobbyPlayer;
 import forge.game.card.CardView;
 import forge.game.player.Player;
+import forge.game.player.PlayerController.BinaryChoiceType;
+import forge.game.player.actions.ConfirmAction;
 import forge.game.spellability.SpellAbility;
 import forge.gamemodes.match.DeclineScope;
 import forge.gamemodes.match.YieldController;
@@ -273,6 +275,9 @@ public final class SafeActions {
         /** El controlador al que se releva: el que tiene la interfaz en la mano. */
         private final PlayerControllerHuman owner;
 
+        /** The player's heads/tails call while the current stack is resolving. */
+        private volatile Boolean coinCallOnStack;
+
         public Guarded(final Player player, final LobbyPlayer lobby,
                        final PlayerControllerHuman owner) {
             super(player, lobby, owner);
@@ -331,6 +336,36 @@ public final class SafeActions {
         @Override
         public IMacroSystem macros() {
             return owner.macros();
+        }
+
+        /** Called when the last stack item leaves, including when the stack is cleared. */
+        void clearCoinCallOnStack() {
+            coinCallOnStack = null;
+        }
+
+        @Override
+        public boolean chooseBinary(final SpellAbility sa, final String question,
+                                    final BinaryChoiceType kindOfChoice, final Boolean defaultVal) {
+            if (kindOfChoice != BinaryChoiceType.HeadsOrTails) {
+                return super.chooseBinary(sa, question, kindOfChoice, defaultVal);
+            }
+            if (getGame().getStack().isEmpty()) {
+                clearCoinCallOnStack();
+                return super.chooseBinary(sa, question, kindOfChoice, defaultVal);
+            }
+            if (isMacroActive()) {
+                clearCoinCallOnStack();
+                return super.chooseBinary(sa, question, kindOfChoice, defaultVal);
+            }
+            final Boolean remembered = coinCallOnStack;
+            if (remembered != null) {
+                // Forge records each answer for macros, even when the GUI did not ask again.
+                macros().addRememberedAction(new ConfirmAction(sa.getCardView(), remembered));
+                return remembered;
+            }
+            final boolean chosen = super.chooseBinary(sa, question, kindOfChoice, defaultVal);
+            coinCallOnStack = chosen;
+            return chosen;
         }
 
         /** Mulligan amistoso: la pregunta no avisa de que haya que devolver nada. Ver {@link FriendlyMulligan}. */
