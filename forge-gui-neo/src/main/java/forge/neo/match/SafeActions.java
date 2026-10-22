@@ -286,6 +286,7 @@ public final class SafeActions {
         private volatile Boolean coinCallOnStack;
 
         private final RepeatTargetChoice repeatTarget = new RepeatTargetChoice();
+        private final RepeatFlipChoice repeatFlip = new RepeatFlipChoice();
         private volatile SpellAbility activeTargetAbility;
 
         public Guarded(final Player player, final LobbyPlayer lobby,
@@ -366,6 +367,10 @@ public final class SafeActions {
             activeTargetAbility = null;
         }
 
+        void clearRepeatFlipOnStack() {
+            repeatFlip.clear();
+        }
+
         private RepeatTargetChoice.Key beginTargetChoice(final SpellAbility sa, final boolean retarget) {
             return beginRepeatChoice(getGame().getStack().isEmpty() || isMacroActive()
                     ? null : RepeatTargetChoice.key(sa, retarget), sa);
@@ -434,7 +439,7 @@ public final class SafeActions {
             }
             final RepeatTargetChoice.Key key = beginRepeatChoice(
                     oneCard && !getGame().getStack().isEmpty() && !isMacroActive()
-                            ? RepeatTargetChoice.effectKey(sa, title) : null, sa);
+                            ? RepeatTargetChoice.choiceKey(sa, title) : null, sa);
             T selected = null;
             try {
                 selected = super.chooseSingleEntityForEffect(options, delayedReveal, sa, title,
@@ -469,6 +474,27 @@ public final class SafeActions {
             final boolean chosen = super.chooseBinary(sa, question, kindOfChoice, defaultVal);
             coinCallOnStack = chosen;
             return chosen;
+        }
+
+        @Override
+        public boolean chooseFlipResult(final SpellAbility sa, final Player flipper, final boolean call) {
+            final NeoMatchUI ui = NeoMatchUI.of(getGui());
+            final RepeatTargetChoice.Key key = sa != null && ui != null
+                    && !getGame().getStack().isEmpty() && !isMacroActive()
+                    ? RepeatTargetChoice.choiceKey(sa, "flip-result|" + call) : null;
+            repeatFlip.begin(key);
+            Boolean selected = null;
+            try {
+                if (key != null) {
+                    selected = ui.chooseFlipResultWithRepeat(sa, call, key, repeatFlip);
+                }
+                if (selected == null) {
+                    selected = super.chooseFlipResult(sa, flipper, call);
+                }
+                return selected;
+            } finally {
+                repeatFlip.finish(key, selected);
+            }
         }
 
         /** Mulligan amistoso: la pregunta no avisa de que haya que devolver nada. Ver {@link FriendlyMulligan}. */

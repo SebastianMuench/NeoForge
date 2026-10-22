@@ -718,6 +718,15 @@ public class ChoiceDialog<T> extends VBox implements NumberedChoice {
         remember.setManaged(true);
     }
 
+    /** Use the existing footer checkbox for a repeatable result choice. */
+    public void offerRepeatSelection(final boolean initial, final Consumer<Boolean> onChange) {
+        remember.setText(NeoText.get("choice.repeatSelection"));
+        remember.setSelected(initial);
+        remember.setVisible(true);
+        remember.setManaged(true);
+        remember.setOnAction(e -> onChange.accept(remember.isSelected()));
+    }
+
     /** Si el jugador quiere que este orden se aplique solo la proxima vez. */
     public boolean remember() {
         return remember.isVisible() && remember.isSelected();

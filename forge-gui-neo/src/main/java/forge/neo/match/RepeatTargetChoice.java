@@ -47,8 +47,8 @@ final class RepeatTargetChoice {
         return key(sa, targeting, sa.getRootAbility().getTrigger() != null);
     }
 
-    /** Non-targeting one-card choices, such as populate, retain their own prompt semantics. */
-    static Key effectKey(final SpellAbility sa, final String prompt) {
+    /** Non-targeting choices retain their own prompt semantics. */
+    static Key choiceKey(final SpellAbility sa, final String prompt) {
         return sa == null || prompt == null ? null : key(sa, "effect|" + prompt, true);
     }
 
