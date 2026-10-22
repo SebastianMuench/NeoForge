@@ -2407,6 +2407,19 @@ public class NeoMatchUI extends NetworkGuiGame implements OverlookedSink {
         if (probing == Thread.currentThread()) {
             return;
         }
+        if (event instanceof forge.game.event.GameEventSpellRemovedFromStack
+                && getGameView() != null && getGameView().getStack().isEmpty()
+                && getGameView().getGame() != null) {
+            for (final forge.game.player.Player player : getGameView().getGame().getPlayers()) {
+                if (player.getController() instanceof SafeActions.Guarded guarded) {
+                    guarded.clearRepeatTargetOnStack();
+                }
+            }
+            final UiDispatcher ui = uiDispatcher();
+            if (ui != null && table != null) {
+                ui.runLater(() -> table.getActionBar().setRepeatSelection(false, false, null));
+            }
+        }
         // EL PRIMERO, y a proposito. Lo que viene detras puede tardar mucho
         // (watchForThingsThatAffectMe llega a PARAR el hilo del motor hasta que
         // pulsas "Entendido") y puede reventar, y en los dos casos el aviso se
@@ -4146,6 +4159,7 @@ public class NeoMatchUI extends NetworkGuiGame implements OverlookedSink {
         // "Otra partida" reusa este NeoMatchUI: una pregunta pendiente de la
         // anterior seria un dialogo fantasma sobre la mesa nueva.
         uiRunLater(() -> table.forgetEngineDialogs());
+        uiRunLater(() -> table.getActionBar().setRepeatSelection(false, false, null));
         gameOverShowing = false;
         closeDeferred = false;
         // El aviso de "el motor se ha muerto" es de un solo uso: si no se
@@ -6569,6 +6583,109 @@ public class NeoMatchUI extends NetworkGuiGame implements OverlookedSink {
                 flushEarlyButtons(parked[0]);
             }
         }
+        repeatTargetSelection(asked, selection);
+    }
+
+    private record RepeatCandidate(RepeatTargetChoice.Pick pick, CardView card, PlayerView player) {
+    }
+
+    /** The target input already supplies the legal candidates; it remains the final validator. */
+    private List<RepeatCandidate> repeatCandidates(final SafeActions.Guarded controller,
+                                                    final forge.gamemodes.match.Selection selection) {
+        final List<RepeatCandidate> candidates = new ArrayList<>();
+        for (final CardView view : selection.cards()) {
+            final forge.game.card.Card card = controller.getCard(view);
+            if (card != null) {
+                candidates.add(new RepeatCandidate(RepeatTargetChoice.pick(card), view, null));
+            }
+        }
+        for (final forge.trackable.TrackableObject view : selection.targets()) {
+            if (view instanceof PlayerView playerView) {
+                final forge.game.player.Player player = controller.getGame().getPlayer(playerView);
+                if (player != null) {
+                    candidates.add(new RepeatCandidate(RepeatTargetChoice.pick(player), null, playerView));
+                }
+            }
+        }
+        return candidates;
+    }
+
+    private volatile Object repeatScheduledInput;
+
+    /** Offer the checkbox beside Forge's table choice, then replay through the normal input. */
+    private void repeatTargetSelection(final Object asked,
+                                       final forge.gamemodes.match.Selection selection) {
+        final forge.gamemodes.match.input.InputBase input =
+                asked instanceof forge.gamemodes.match.input.InputSelectTargets
+                        || asked instanceof forge.gamemodes.match.input.InputSelectEntitiesFromList<?>
+                        ? (forge.gamemodes.match.input.InputBase) asked : null;
+        final SafeActions.Guarded active = input != null
+                && input.getController() instanceof SafeActions.Guarded guarded ? guarded : null;
+        final IGameController seated = seated(getGameController());
+        final SafeActions.Guarded shown = active != null ? active
+                : seated instanceof SafeActions.Guarded guarded ? guarded : null;
+        final boolean offered = active != null && active.repeatTarget().isOffered();
+        final boolean visible = shown != null && (offered || shown.repeatTarget().hasRemembered());
+        final UiDispatcher ui = uiDispatcher();
+        if (ui != null && table != null) {
+            ui.runLater(() -> table.getActionBar().setRepeatSelection(visible,
+                    visible && shown.repeatTarget().isEnabled(), on -> {
+                        shown.repeatTarget().setEnabled(on);
+                        if (!on && !shown.repeatTarget().isOffered()) {
+                            table.getActionBar().setRepeatSelection(false, false, null);
+                        } else if (on && input != null) {
+                            repeatTargetSelection(input, getSelection());
+                        }
+                    }));
+        }
+        if (!offered || input == repeatScheduledInput || selection.min() != 1
+                || selection.max() != 1 || active.activeTargetAbility() == null
+                || input instanceof forge.gamemodes.match.input.InputSelectTargets
+                        && active.activeTargetAbility().getTargets().size() != 0
+                || input instanceof forge.gamemodes.match.input.InputSelectEntitiesFromList<?> list
+                        && !list.getSelected().isEmpty()) {
+            return;
+        }
+        final List<RepeatCandidate> candidates = repeatCandidates(active, selection);
+        final RepeatTargetChoice.Pick wanted = active.repeatTarget().matching(
+                active.repeatTarget().activeKey(), candidates.stream().map(RepeatCandidate::pick).toList());
+        if (wanted == null) {
+            return;
+        }
+        repeatScheduledInput = input;
+        // Leave a short window with the checked box visible so the player can stop a run.
+        forge.util.ThreadUtil.delay(350, () -> respondLater(() -> {
+            if (active.getInputQueue().getInput() != input || !active.repeatTarget().isEnabled()) {
+                return;
+            }
+            final RepeatTargetChoice.Pick stillWanted = active.repeatTarget().matching(
+                    active.repeatTarget().activeKey(),
+                    repeatCandidates(active, getSelection()).stream().map(RepeatCandidate::pick).toList());
+            if (!wanted.equals(stillWanted)) {
+                repeatTargetSelection(input, getSelection());
+                return;
+            }
+            for (final RepeatCandidate candidate : repeatCandidates(active, getSelection())) {
+                if (!wanted.equals(candidate.pick())) {
+                    continue;
+                }
+                if (candidate.card() != null) {
+                    if (!active.selectCard(candidate.card(), null, null)) {
+                        active.repeatTarget().disable();
+                    }
+                } else if (candidate.player() != null) {
+                    active.selectPlayer(candidate.player(), null);
+                    if (active.activeTargetAbility() != null
+                            && active.activeTargetAbility().getTargets().size() == 0) {
+                        active.repeatTarget().disable();
+                    }
+                }
+                break;
+            }
+            if (!active.repeatTarget().isEnabled()) {
+                repeatTargetSelection(input, getSelection());
+            }
+        }));
     }
 
     /** Empieza una eleccion de cartas (lo que antes era {@code setSelectables}). */

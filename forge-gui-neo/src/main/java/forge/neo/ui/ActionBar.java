@@ -5,6 +5,8 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -71,6 +73,7 @@ public class ActionBar extends VBox {
      */
     private final Button resolveAll = new Button();
     private Runnable onResolveAll;
+    private final CheckBox repeatSelection = new CheckBox(NeoText.get("choice.repeatSelection"));
 
     /** Un jugador elegible: su nombre, si ya esta elegido y que hacer al clicarlo. */
     public record PlayerChoice(String name, boolean picked, Runnable onPick) {
@@ -95,7 +98,7 @@ public class ActionBar extends VBox {
         inline = on;
         pseudoClassStateChanged(INLINE, on);
         if (on) {
-            textColumn.getChildren().setAll(prompt, warning, players, resolveAll);
+            textColumn.getChildren().setAll(prompt, warning, repeatSelection, players, resolveAll);
             textColumn.setAlignment(Pos.CENTER_LEFT);
             HBox.setHgrow(textColumn, Priority.ALWAYS);
             textColumn.setMinWidth(0);
@@ -109,7 +112,7 @@ public class ActionBar extends VBox {
             inlineRow.getChildren().clear();
             textColumn.getChildren().clear();
             buttons.setMinWidth(Region.USE_COMPUTED_SIZE);
-            getChildren().setAll(prompt, warning, players, resolveAll, buttons);
+            getChildren().setAll(prompt, warning, repeatSelection, players, resolveAll, buttons);
         }
         requestLayout();
     }
@@ -148,6 +151,11 @@ public class ActionBar extends VBox {
         players.setVisible(false);
         players.setManaged(false);
 
+        repeatSelection.getStyleClass().add("repeat-selection");
+        repeatSelection.setTooltip(new Tooltip(NeoText.get("choice.repeatSelection.tip")));
+        repeatSelection.setVisible(false);
+        repeatSelection.setManaged(false);
+
         resolveAll.getStyleClass().addAll("btn-secondary", "resolve-all");
         resolveAll.setMaxWidth(Double.MAX_VALUE);
         resolveAll.setVisible(false);
@@ -161,8 +169,21 @@ public class ActionBar extends VBox {
             fire(action);
         });
 
-        getChildren().addAll(prompt, warning, players, resolveAll, buttons);
+        getChildren().addAll(prompt, warning, repeatSelection, players, resolveAll, buttons);
         setButtons(NeoText.get("action.ok"), NeoText.get("common.cancel"), false, false);
+    }
+
+    /** The target picker uses the same checkbox in both table layouts. */
+    public void setRepeatSelection(final boolean visible, final boolean selected,
+                                   final java.util.function.Consumer<Boolean> onChange) {
+        repeatSelection.setVisible(visible);
+        repeatSelection.setManaged(visible);
+        repeatSelection.setSelected(visible && selected);
+        repeatSelection.setOnAction(e -> {
+            if (onChange != null) {
+                onChange.accept(repeatSelection.isSelected());
+            }
+        });
     }
 
     private static void fire(final Runnable r) {
