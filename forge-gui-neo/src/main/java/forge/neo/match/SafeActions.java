@@ -4,14 +4,21 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import forge.LobbyPlayer;
 import forge.game.card.CardView;
+import forge.game.GameEntity;
+import forge.game.GameObject;
+import forge.game.player.DelayedReveal;
 import forge.game.player.Player;
 import forge.game.player.PlayerController.BinaryChoiceType;
 import forge.game.player.actions.ConfirmAction;
 import forge.game.spellability.SpellAbility;
+import forge.game.spellability.TargetChoices;
+import forge.game.trigger.WrappedAbility;
+import forge.util.collect.FCollectionView;
 import forge.gamemodes.match.DeclineScope;
 import forge.gamemodes.match.YieldController;
 import forge.interfaces.IMacroSystem;
@@ -278,6 +285,9 @@ public final class SafeActions {
         /** The player's heads/tails call while the current stack is resolving. */
         private volatile Boolean coinCallOnStack;
 
+        private final RepeatTargetChoice repeatTarget = new RepeatTargetChoice();
+        private volatile SpellAbility activeTargetAbility;
+
         public Guarded(final Player player, final LobbyPlayer lobby,
                        final PlayerControllerHuman owner) {
             super(player, lobby, owner);
@@ -341,6 +351,99 @@ public final class SafeActions {
         /** Called when the last stack item leaves, including when the stack is cleared. */
         void clearCoinCallOnStack() {
             coinCallOnStack = null;
+        }
+
+        RepeatTargetChoice repeatTarget() {
+            return repeatTarget;
+        }
+
+        SpellAbility activeTargetAbility() {
+            return activeTargetAbility;
+        }
+
+        void clearRepeatTargetOnStack() {
+            repeatTarget.clear();
+            activeTargetAbility = null;
+        }
+
+        private RepeatTargetChoice.Key beginTargetChoice(final SpellAbility sa, final boolean retarget) {
+            return beginRepeatChoice(getGame().getStack().isEmpty() || isMacroActive()
+                    ? null : RepeatTargetChoice.key(sa, retarget), sa);
+        }
+
+        private RepeatTargetChoice.Key beginRepeatChoice(final RepeatTargetChoice.Key key,
+                                                         final SpellAbility sa) {
+            repeatTarget.begin(key);
+            activeTargetAbility = key == null ? null : sa;
+            return key;
+        }
+
+        private void finishTargetChoice(final RepeatTargetChoice.Key key,
+                                        final SpellAbility sa, final boolean succeeded) {
+            RepeatTargetChoice.Pick picked = null;
+            if (succeeded && key != null && sa.getTargets().size() == 1) {
+                for (final GameEntity entity : sa.getTargets().getTargetEntities()) {
+                    picked = RepeatTargetChoice.pick(entity);
+                }
+            }
+            repeatTarget.finish(key, picked);
+            activeTargetAbility = null;
+        }
+
+        @Override
+        public boolean chooseTargetsFor(final SpellAbility sa) {
+            final RepeatTargetChoice.Key key = beginTargetChoice(sa, false);
+            boolean succeeded = false;
+            try {
+                succeeded = super.chooseTargetsFor(sa);
+                return succeeded;
+            } finally {
+                finishTargetChoice(key, sa, succeeded);
+            }
+        }
+
+        @Override
+        public TargetChoices chooseNewTargetsFor(final SpellAbility ability,
+                                                  final Predicate<GameObject> filter,
+                                                  final boolean optional) {
+            final SpellAbility sa = ability.isWrapper()
+                    ? ((WrappedAbility) ability).getWrappedAbility() : ability;
+            // A custom filter can change legality without changing the ability text.
+            final RepeatTargetChoice.Key key = filter == null
+                    ? beginTargetChoice(sa, true) : beginTargetChoice(null, true);
+            TargetChoices chosen = null;
+            try {
+                chosen = super.chooseNewTargetsFor(ability, filter, optional);
+                return chosen;
+            } finally {
+                finishTargetChoice(key, sa, chosen != null);
+            }
+        }
+
+        @Override
+        public <T extends GameEntity> T chooseSingleEntityForEffect(final FCollectionView<T> options,
+                final DelayedReveal delayedReveal, final SpellAbility sa, final String title,
+                final boolean optional, final Player targetedPlayer, final Map<String, Object> params) {
+            boolean oneCard = options.size() > 1 && !optional && delayedReveal == null
+                    && targetedPlayer == null && (params == null || params.isEmpty());
+            for (final GameEntity option : options) {
+                if (!(option instanceof forge.game.card.Card)) {
+                    oneCard = false;
+                    break;
+                }
+            }
+            final RepeatTargetChoice.Key key = beginRepeatChoice(
+                    oneCard && !getGame().getStack().isEmpty() && !isMacroActive()
+                            ? RepeatTargetChoice.effectKey(sa, title) : null, sa);
+            T selected = null;
+            try {
+                selected = super.chooseSingleEntityForEffect(options, delayedReveal, sa, title,
+                        optional, targetedPlayer, params);
+                return selected;
+            } finally {
+                repeatTarget.finish(key, RepeatTargetChoice.pick(selected));
+                activeTargetAbility = null;
+            }
         }
 
         @Override

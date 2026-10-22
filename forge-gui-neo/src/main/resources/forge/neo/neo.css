@@ -1389,6 +1389,8 @@
     -fx-border-width: 0 0 0 3;
 }
 
+.action-bar .repeat-selection { -fx-text-fill: -neo-text; }
+
 .prompt-text {
     -fx-font-size: 0.95em;
     -fx-text-fill: -neo-text;
