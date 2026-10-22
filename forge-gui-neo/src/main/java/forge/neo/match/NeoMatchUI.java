@@ -2414,6 +2414,7 @@ public class NeoMatchUI extends NetworkGuiGame implements OverlookedSink {
                 if (player.getController() instanceof SafeActions.Guarded guarded) {
                     guarded.clearCoinCallOnStack();
                     guarded.clearRepeatTargetOnStack();
+                    guarded.clearRepeatFlipOnStack();
                 }
             }
             final UiDispatcher ui = uiDispatcher();
@@ -7233,6 +7234,52 @@ public class NeoMatchUI extends NetworkGuiGame implements OverlookedSink {
             return fallback;
         }
         return box.get(0);
+    }
+
+    /** Krark's Thumb uses a result-choice list, not the usual targeting input. */
+    Boolean chooseFlipResultWithRepeat(final forge.game.spellability.SpellAbility sa, final boolean call,
+                                       final RepeatTargetChoice.Key key, final RepeatFlipChoice repeat) {
+        final forge.util.Localizer words = forge.util.Localizer.getInstance();
+        final List<String> labels = call
+                ? List.of(words.getMessage("lblHeads"), words.getMessage("lblTails"))
+                : List.of(words.getMessage("lblWinTheFlip"), words.getMessage("lblLoseTheFlip"));
+        final String title = sa.getHostCard().getDisplayName() + " - " + words.getMessage("lblChooseAResult");
+        return askUser(reply -> {
+            final java.util.concurrent.atomic.AtomicBoolean answered =
+                    new java.util.concurrent.atomic.AtomicBoolean();
+            final java.util.concurrent.atomic.AtomicBoolean pending =
+                    new java.util.concurrent.atomic.AtomicBoolean();
+            final ChoiceDialog<String> dialog = new ChoiceDialog<>(title, labels, 1, 1,
+                    s -> s, handCardWidth(), picked -> {
+                        answered.set(true);
+                        reply.accept(picked.size() == 1 ? labels.get(0).equals(picked.get(0)) : null);
+                    });
+            final Runnable schedule = () -> {
+                final Boolean remembered = repeat.matching(key);
+                if (remembered == null || !pending.compareAndSet(false, true)) {
+                    return;
+                }
+                // Show the checked box briefly so the player can stop the sequence.
+                final javafx.animation.PauseTransition wait = new javafx.animation.PauseTransition(
+                        javafx.util.Duration.millis(350));
+                wait.setOnFinished(e -> {
+                    pending.set(false);
+                    if (!answered.get() && table.getOverlay().getContent() == dialog
+                            && remembered.equals(repeat.matching(key))) {
+                        dialog.pickNumber(remembered ? 1 : 2, false);
+                    }
+                });
+                wait.play();
+            };
+            dialog.offerRepeatSelection(repeat.isEnabled(), on -> {
+                repeat.setEnabled(on);
+                if (on) {
+                    schedule.run();
+                }
+            });
+            table.getOverlay().show(dialog);
+            schedule.run();
+        }, null);
     }
 
     /**
