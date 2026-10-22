@@ -2407,6 +2407,15 @@ public class NeoMatchUI extends NetworkGuiGame implements OverlookedSink {
         if (probing == Thread.currentThread()) {
             return;
         }
+        if (event instanceof forge.game.event.GameEventSpellRemovedFromStack
+                && getGameView() != null && getGameView().getStack().isEmpty()
+                && getGameView().getGame() != null) {
+            for (final forge.game.player.Player player : getGameView().getGame().getPlayers()) {
+                if (player.getController() instanceof SafeActions.Guarded guarded) {
+                    guarded.clearCoinCallOnStack();
+                }
+            }
+        }
         // EL PRIMERO, y a proposito. Lo que viene detras puede tardar mucho
         // (watchForThingsThatAffectMe llega a PARAR el hilo del motor hasta que
         // pulsas "Entendido") y puede reventar, y en los dos casos el aviso se
