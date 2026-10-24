@@ -7291,6 +7291,29 @@ public class NeoMatchUI extends NetworkGuiGame implements OverlookedSink {
         return box.get(0);
     }
 
+    /** A paused macro uses the normal card dialog, without replaying another remembered answer. */
+    forge.game.card.Card chooseMacroCard(final List<forge.game.card.Card> legal,
+                                        final Consumer<Runnable> cancellation) {
+        return askUser(reply -> {
+            final List<CardView> views = new ArrayList<>();
+            for (final forge.game.card.Card card : legal) {
+                views.add(card.getView());
+            }
+            final ChoiceDialog<CardView> dialog = new ChoiceDialog<>(
+                    NeoText.get("macro.manualSelection"), views, 0, 1,
+                    NeoMatchUI::defaultLabel, handCardWidth(), null, false,
+                    picked -> reply.accept(picked == null || picked.isEmpty() ? null
+                            : legal.get(views.indexOf(picked.get(0)))));
+            final javafx.scene.control.Button cancel = new javafx.scene.control.Button(
+                    NeoText.get("common.cancel"));
+            cancel.getStyleClass().add("btn-secondary");
+            cancel.setOnAction(e -> reply.accept(null));
+            dialog.setContext(cancel);
+            cancellation.accept(() -> reply.accept(null));
+            table.getOverlay().show(dialog);
+        }, null);
+    }
+
     /** Krark's Thumb uses a result-choice list, not the usual targeting input. */
     Boolean chooseFlipResultWithRepeat(final forge.game.spellability.SpellAbility sa, final boolean call,
                                        final RepeatTargetChoice.Key key, final RepeatFlipChoice repeat) {

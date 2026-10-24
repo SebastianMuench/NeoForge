@@ -905,6 +905,13 @@ public final class NeoSettings {
      */
     public static final String AUTO_PASS = "autoPass";
 
+    /** Conservative recovery of macro card selections; strict playback is the default. */
+    public static final String LENIENT_MACRO_PLAYBACK = "lenientMacroPlayback";
+
+    public static boolean lenientMacroPlayback() {
+        return getBool(LENIENT_MACRO_PLAYBACK, false);
+    }
+
     /**
      * Que los disparos de TUS reliquias de Ascenso se resuelvan solos.
      *

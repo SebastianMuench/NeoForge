@@ -294,6 +294,7 @@ public final class SafeActions {
             super(player, lobby, owner);
             this.owner = owner;
             sharedYields = shareYields(this, owner);
+            NeoMacroSystem.install(owner);
         }
 
         /** Si el campo ya es el del relevado. Ver {@link #getYieldController}. */

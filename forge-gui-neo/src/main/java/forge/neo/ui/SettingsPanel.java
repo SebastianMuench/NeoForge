@@ -606,6 +606,12 @@ public class SettingsPanel extends VBox {
                     NeoSettings.save();
                 }));
 
+        getChildren().add(toggleRow(NeoText.get("settings.lenientMacroPlayback"),
+                NeoSettings.lenientMacroPlayback(), on -> {
+                    NeoSettings.setBool(NeoSettings.LENIENT_MACRO_PLAYBACK, on);
+                    NeoSettings.save();
+                }));
+
         // --- y desde la mano: ciclar sin querer (Discord, 17-10-2026) ---
         // Encendido de fabrica: solo pregunta cuando la carta no se puede
         // lanzar y tocarla haria otra cosa (ciclar, canalizar...).
