@@ -108,6 +108,10 @@ Backspace clears it, Esc cancels. Every action takes two keys.
 Esc can't be rebound: it always opens the pause menu and the settings, which is how you get
 to change everything else.
 
+Settings also includes **Lenient Macro Playback**, off by default. It can recover
+card selections after an object changes identity and asks you when a match is
+ambiguous. See [macro playback behavior and supported selections](MACRO-PLAYBACK.md).
+
 ### Seeing every battlefield at once
 
 In three- or four-player Commander, Settings → *Show every opponent's battlefield at once*
